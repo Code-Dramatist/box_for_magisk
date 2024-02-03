@@ -7,11 +7,14 @@ POSTFSDATA=false
 LATESTARTSERVICE=true
 
 if [ "$BOOTMODE" != true ]; then
-  ui_print "! Please install in Magisk Manager or KernelSU Manager"
+  abort "-----------------------------------------------------------"
+  ui_print "! Please install in Magisk/KernelSU/APatch Manager"
   ui_print "! Install from recovery is NOT supported"
   abort "-----------------------------------------------------------"
 elif [ "$KSU" = true ] && [ "$KSU_VER_CODE" -lt 10670 ]; then
-  abort "error: Please update your KernelSU and KernelSU Manager"
+  abort "-----------------------------------------------------------"
+  ui_print "! Please update your KernelSU and KernelSU Manager"
+  abort "-----------------------------------------------------------"
 fi
 
 if [ "$API" -lt 28 ]; then
@@ -22,9 +25,12 @@ else
 fi
 
 service_dir="/data/adb/service.d"
-if [ "$KSU" = true ]; then
+if [ "$KSU" = "true" ]; then
   ui_print "- kernelSU version: $KSU_VER ($KSU_VER_CODE)"
   [ "$KSU_VER_CODE" -lt 10683 ] && service_dir="/data/adb/ksu/service.d"
+elif [ "$APATCH" = "true" ]; then
+  APATCH_VER=$(cat "/data/adb/ap/version")
+  ui_print "- APatch version: $APATCH_VER"
 else
   ui_print "- Magisk version: $MAGISK_VER ($MAGISK_VER_CODE)"
 fi
@@ -36,7 +42,7 @@ if [ -d "/data/adb/modules/box_for_magisk" ]; then
   ui_print "- Old module deleted."
 fi
 
-ui_print "- Installing Box for Magisk/KernelSU"
+ui_print "- Installing Box for Magisk/KernelSU/APatch"
 unzip -o "$ZIPFILE" -x 'META-INF/*' -d "$MODPATH" >&2
 
 if [ -d "/data/adb/box" ]; then
@@ -78,15 +84,24 @@ ui_print "- Make sure you have a good internet connection."
 ui_print "- [ Vol UP(+): Yes ]"
 ui_print "- [ Vol DOWN(-): No ]"
 
+START_TIME=$(date +%s)
 while true ; do
-  getevent -lc 1 2>&1 | grep KEY_VOLUME > $TMPDIR/events
-  if $(cat $TMPDIR/events | grep -q KEY_VOLUMEUP) ; then
-    ui_print "- It will take a while...."
+  NOW_TIME=$(date +%s)
+  timeout 1 getevent -lc 1 2>&1 | grep KEY_VOLUME > "$TMPDIR/events"
+  if [ $(( NOW_TIME - START_TIME )) -gt 9 ] ; then
+    ui_print "- No input detected after 10 seconds"
+    ui_print "- Downloading Kernel Anyway...."
     /data/adb/box/scripts/box.tool all
     break
-  elif $(cat $TMPDIR/events | grep -q KEY_VOLUMEDOWN) ; then
-    ui_print "- Skip download Kernel and Geox"
-    break
+  else
+    if $(cat $TMPDIR/events | grep -q KEY_VOLUMEUP) ; then
+      ui_print "- It will take a while...."
+      /data/adb/box/scripts/box.tool all
+      break
+    elif $(cat $TMPDIR/events | grep -q KEY_VOLUMEDOWN) ; then
+      ui_print "- Skip download Kernel and Geox"
+      break
+    fi
   fi
 done
 
@@ -128,7 +143,13 @@ if [ -z "$(find /data/adb/box/bin -type f)" ]; then
   sed -Ei 's/^description=(\[.*][[:space:]]*)?/description=[ 😱 Module installed but you need to download Kernel(xray clash v2fly sing-box) and GeoX(geosite geoip mmdb) manually ] /g' $MODPATH/module.prop
 fi
 
-[ "$KSU" = "true" ] && sed -i "s/name=.*/name=Box for KernelSU/g" $MODPATH/module.prop || sed -i "s/name=.*/name=Box for Magisk/g" $MODPATH/module.prop
+if [ "$KSU" = "true" ]; then
+  sed -i "s/name=.*/name=Box for KernelSU/g" $MODPATH/module.prop
+elif [ "$APATCH" = "true" ]; then
+  sed -i "s/name=.*/name=Box for APatch/g" $MODPATH/module.prop
+else
+  sed -i "s/name=.*/name=Box for Magisk/g" $MODPATH/module.prop
+fi
 
 ui_print "- Delete leftover files"
 rm -rf /data/adb/box/bin/.bin
